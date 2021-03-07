@@ -1,60 +1,45 @@
-# Victoria Armer
-# for nucleotide optimisation
-
-
-# This code calculates codon frequency usage from predicted coding sequences of the Fusarium graminearum genome and converts protein sequences into codon-optimzed amino acid sequences for increased transcription and translation by the host organism. This is useful for transgenic studies. Examples here are GFP and mCherry for use in microscopy.
-
-
+# Written by Victoria Armer Feb 2021
+# A script for determining species codon bias and protein sequence codon optimzation 
 
 # Set up: download cds of host organism from ensembl. Fusarium graminearum genome can be downloaded here: ftp://ftp.ensemblgenomes.org/pub/fungi/release-49/fasta/fusarium_graminearum/cds/ (Feb, 2021)
 
+# very quick  ~4 seconds for Fusarium graminearum genome
+
 # import required packages
-
 import pandas as pd
-from pandas import DataFrame
-import re
-import numpy as np
-
 
 #### PART 1 
-# Determining species codon usage 
+# Determining species codon bias
 
-
-
-# import coding sequences of fusarium 
+# import coding sequences of species (e.g. Fusarium graminearum)
 ### change so that this is a file path selector before uploading to github
 Species_cds = open(r"C:\Users\armerv\Desktop\BLAST\Genome_cds_fastas\Fusarium_graminearum_cds.fasta")
 
-#Species_cds_test = ['ATGTATTCGTGCCTAGCATGACTACGATGACATGACAATGCGCA']
-
-#### ignore cds descriptions starting with '>'
-
-# this function removes the coding sequence description line starting '>' to return a list of just the coding sequences
-# species is the file path, which we have already defined as 'Species_cds' for 'Species coding sequences'
+# remove first line from fasta sequences with descriptions
 
 def get_coding_seqs(cds):
-    seqs = []
+    code = []
     for line in cds:
         if line.startswith('>') is False:
-            seqs.append(line.rstrip())
-    return seqs
+            code.append(line.rstrip())
+    return code
 
 
 # convert DNA to mRNA in truncated coding sequences
 
-def DNA_to_mRNA(seqs):
-    sequences = []
-    for cds in seqs:
-        sequences.append(cds.upper().replace('T', 'U'))    
-    return sequences
+def DNA_to_mRNA(DNA):
+    mRNA = []
+    for code in DNA:
+        mRNA.append(code.upper().replace('T', 'U'))    
+    return mRNA
 
 
 # split coding seqs into codons (all start at start codon already, but remove any that aren't factor of 3)
 
-def codon_segmentation(sequences):
+def codon_segmentation(mRNA):
         n = 3
         segments = []
-        for seq in sequences:
+        for seq in mRNA:
             for i in range(0, len(seq), n):
                 segments.append(seq[i:i+n])
         return segments
@@ -66,45 +51,39 @@ c_to_aa = {
     "AGU":"Ser", "AGC":"Ser",
     "CUU":"Leu", "CUC":"Leu", "CUA":"Leu", "CUG":"Leu",
     "UUA":"Leu", "UUG":"Leu",
-    
     "UAU":"Tyr", "UAC":"Tyr", "UAA":"STOP", "UAG":"STOP",
     "UGU":"Cys", "UGC":"Cys", "UGA":"STOP", "UGG":"Trp",
     "CGU":"Arg", "CGC":"Arg", "CGA":"Arg", "CGG":"Arg",
     "AGA":"Arg", "AGG":"Arg",
     "CCU":"Pro", "CCC":"Pro", "CCA":"Pro", "CCG":"Pro",
     "CAU":"His", "CAC":"His", "CAA":"Gln", "CAG":"Gln",
-    
     "AUU":"Ile", "AUC":"Ile", "AUA":"Ile", "AUG":"Met",
     "ACU":"Thr", "ACC":"Thr", "ACA":"Thr", "ACG":"Thr",
     "AAU":"Asn", "AAC":"Asn", "AAA":"Lys", "AAG":"Lys",
-   
     "GUU":"Val", "GUC":"Val", "GUA":"Val", "GUG":"Val",
     "GCU":"Ala", "GCC":"Ala", "GCA":"Ala", "GCG":"Ala",
     "GAU":"Asp", "GAC":"Asp", "GAA":"Glu", "GAG":"Glu",
     "GGU":"Gly", "GGC":"Gly", "GGA":"Gly", "GGG":"Gly"}
 
 
-#### Retrieving codon frequencies
-# seqs = list of truncadted mRNA coding sequences
-# returns dataframe of absolute codon frequencies
-
+# codon incidences in genome
 
 def counter(segments):
-    codon_count = dict()
+    codon_count = dict() # create dictionary
     
-    for codon in list(c_to_aa.keys()): # use dictionary for 64 codons
+    for codon in list(c_to_aa.keys()): # use dictionary for codons
         codon_count[codon]=0  # empty vector to accumulate codon count
 
     for c in list(codon_count.keys()):
-        codon_count[c]+= segments.count(c)
+        codon_count[c]+= segments.count(c) #counter
 
     df_codon_count=pd.DataFrame(list(codon_count.items()) ) #output as dataframe
-    df_codon_count.columns=['Codon', 'Obs_Freq'] # column names
+    df_codon_count.columns=['Codon', 'Count'] # column names
     df_codon_count['Amino_Acid'] = [c_to_aa[codon] for codon in df_codon_count['Codon'].values] ## add amino acid column
 
     return df_codon_count
 
-#### caluculate codon usage from codon counts
+# caluculate relative codon usage from codon incidence
 
 def codon_usage(df_codon_count): #pass in codon count from previous
     aa_groups = df_codon_count.groupby('Amino_Acid') # by amino acid column in dataframe
@@ -112,9 +91,9 @@ def codon_usage(df_codon_count): #pass in codon count from previous
     df_list = []
     for a in aa:
         d=aa_groups.get_group(a)
-        d['Relative_codon_usage'] = (d['Obs_Freq'].values)/(d['Obs_Freq'].mean()) #obs/expected freq 
-        d['Relative_adaptive_weights']= (d['Relative_codon_usage'].values)/(d['Relative_codon_usage'].max())
-        d['optimal'] = [True if relative_usage ==d['Relative_codon_usage'].max() else False for relative_usage in d['Relative_codon_usage'].values] 
+        d['Relative_codon_usage'] = (d['Count'].values)/(d['Count'].mean()) #obs/expected freq 
+        d['Relative_weighting']= (d['Relative_codon_usage'].values)/(d['Relative_codon_usage'].max())
+        d['Choice_codon'] = [True if relative_usage ==d['Relative_codon_usage'].max() else False for relative_usage in d['Relative_codon_usage'].values] 
         #marks optimal codon for each aa
         df_list.append(d) # creates lists
 
@@ -122,14 +101,15 @@ def codon_usage(df_codon_count): #pass in codon count from previous
 
 
 
-#### Run programmes sequentially, putting output of previous as input
+#### Run programmes sequentially
+
 truncation = get_coding_seqs(Species_cds)
 mRNA_conversion = DNA_to_mRNA(truncation)
 segmentation = codon_segmentation(mRNA_conversion)
 codon_counter = counter(segmentation)
 codon_bias = codon_usage(codon_counter)
 pd.set_option('display.max_columns', None) # allows all columns to be displayed
-print(codon_bias)
+print(codon_bias) # print results
 
 
 ##saves final table as csv (if required)
@@ -145,11 +125,10 @@ print(codon_bias)
 protein_cds =  open(r"C:\Users\armerv\Desktop\BLAST\Protein_seqs\eGFP.fasta")
 #protein_cds = protein_cds.read()
 
-# run previous function to parse sequence, convert to mRNA and segment
+# run previous function to parse sequence
 protein_truncation = get_coding_seqs(protein_cds)
 
-# split string into single aa
-
+# split string into single amino acid sequence
 def single_aa_segmentation(protein_truncation):
         n = 1
         segments = []
@@ -160,10 +139,9 @@ def single_aa_segmentation(protein_truncation):
 
 # run
 protein_segmentation = single_aa_segmentation(protein_truncation)
-# check
-print(protein_segmentation)
-# convert single letter amini acid sequence to 3 letter aa sequence
 
+
+# convert single letter amini acid sequence to 3 letter aa sequence using dictionary
 aa_single_letter = {
     "A":"Ala", "C":"Cys", "D": "Asp", "E":"Glu", "F":"Phe", "G":"Gly", "H":"His", "I":"Ile", 
     "K":"Lys", "L":"Leu", "M":"Met", "N":"Asn", "P":"Pro", "Q":"Gln", "R":"Arg", "S":"Ser",
@@ -171,9 +149,7 @@ aa_single_letter = {
 }
 
 
-# convert sequence to amino acid sequence using dictionary
-
-# function that converts codons - NOT YET TESTED
+# Convert codons
 def amino_acid_conversion(aa_single_letter, protein_segmentation):
     aa = []
 
@@ -185,35 +161,28 @@ def amino_acid_conversion(aa_single_letter, protein_segmentation):
     return aa
 
 protein_aa = amino_acid_conversion(aa_single_letter, protein_segmentation)
-# check
-print(protein_aa)
 
-
-#### need to pull out list of top codon for each amino acid - already been marked in csv 'Species_codon_usage'
-# delete all calculation columns are rows where optimal = FALSE 
+# reduce table to just include top codons for each amino acid
 
 df = codon_bias # create new table
-del df['Obs_Freq']
+# delete unnecessary columns
+del df['Count']
 del df['Relative_codon_usage']
-del df['Relative_adaptive_weights']
+del df['Relative_weighting']
 
 # filter rows for optimal codon
-df = df[df.optimal != False]
-print(df)
+df = df[df.Choice_codon != False]
 
 #remove optimal column as no longer required
-del df['optimal']
+del df['Choice_codon']
 
-# create dictionary converting amino acids to codons 
+
 # reorder columns so dictionary is right way
 df = df[["Amino_Acid", "Codon"]]
-
+# create dictionary converting amino acids to codons 
 Top_codons = dict(df.values)
-print(Top_codons)
 
-
-# function to convert aa back to optimal codons
-
+# convert aa to optimal codons for species
 def codon_conversion(Top_codons, protein_aa):
     new_codons = []
 
@@ -228,13 +197,9 @@ def codon_conversion(Top_codons, protein_aa):
 
 # run function
 protein_new_cds = codon_conversion(Top_codons, protein_aa)
-#check
-print(protein_new_cds)
 
+# segment mRNA sequence to replace U with T for DNA sequence
 protein_new_cds_1 = single_aa_segmentation(protein_new_cds)
-
-# check 
-print(protein_new_cds_1)
 
 # convert back to DNA
 def mRNA_to_DNA(protein_new_cds_1):
@@ -255,7 +220,5 @@ print(optimized_protein)
 
 
 
-
-### sequence comparison i.e. print differences
     
   
